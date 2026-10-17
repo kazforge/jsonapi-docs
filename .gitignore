@@ -1,0 +1,9 @@
+.idea/
+*.iml
+.venv/
+__pycache__/
+build/
+site/
+_sources/
+/docs/core/*/
+/docs/spring/*/
