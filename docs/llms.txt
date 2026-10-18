@@ -1,0 +1,8 @@
+# JSON:API for Java
+
+> Published guides for the independently released Core library and Spring integration.
+
+## Documentation
+
+- [Core 0.4.0](core/0.4.0/): Framework-neutral JSON:API library guide.
+- [Spring 0.1.0](spring/0.1.0/): Spring WebMVC integration guide.
