@@ -63,4 +63,8 @@ nav:
           - PATCH: core/0.4.0/patches.md
           - Query and representation: core/0.4.0/query-and-representation.md
           - Diagnostics: core/0.4.0/diagnostics.md
-  - Spring integration: spring/index.md
+  - Spring integration:
+      - Spring home: spring/index.md
+      - 0.1.0:
+          - Overview: spring/0.1.0/index.md
+          - WebMVC setup: spring/0.1.0/webmvc.md
