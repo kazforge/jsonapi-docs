@@ -15,8 +15,8 @@ permissions:
 env:
   CORE_VERSION: '0.4.0'
   CORE_SHA: '6a5fb0906fe38de0466c4b819fb9dad7d37faa47'
-  SPRING_VERSION: ''
-  SPRING_SHA: ''
+  SPRING_VERSION: '0.1.0'
+  SPRING_SHA: '6935b7d62a5911937bd45a98f985274cfc13640b'
 concurrency:
   group: docs-${{ github.ref }}
   cancel-in-progress: false
