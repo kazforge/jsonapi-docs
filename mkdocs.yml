@@ -51,5 +51,16 @@ extra_css:
 copyright: Maintained by KazForge
 nav:
   - Home: index.md
-  - Core library: core/index.md
+  - Core library:
+      - Core home: core/index.md
+      - 0.4.0:
+          - Overview: core/0.4.0/index.md
+          - Getting started: core/0.4.0/getting-started.md
+          - API Reference: core/0.4.0/api-reference.md
+          - Configuration: core/0.4.0/configuration.md
+          - Resources: core/0.4.0/resources.md
+          - Relationships and documents: core/0.4.0/relationships-and-documents.md
+          - PATCH: core/0.4.0/patches.md
+          - Query and representation: core/0.4.0/query-and-representation.md
+          - Diagnostics: core/0.4.0/diagnostics.md
   - Spring integration: spring/index.md

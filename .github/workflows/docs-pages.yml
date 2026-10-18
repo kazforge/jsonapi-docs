@@ -7,11 +7,14 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-# Set these only in a reviewed release-promotion PR, after publication and
-# consumer verification. SHA means the full software-tag commit, never main.
+# Pin approved documentation snapshots only after release and consumer verification.
+# One-time Core 0.4.0 exception: software tag v0.4.0 =
+# 3ab34c99a8c29deb4f384c943bf7bc60b77d32f5; corrected docs snapshot =
+# 6a5fb0906fe38de0466c4b819fb9dad7d37faa47 (Core PR #317).
+# Later promotions must pin the software-tag commit directly, never moving main.
 env:
-  CORE_VERSION: ''
-  CORE_SHA: ''
+  CORE_VERSION: '0.4.0'
+  CORE_SHA: '6a5fb0906fe38de0466c4b819fb9dad7d37faa47'
   SPRING_VERSION: ''
   SPRING_SHA: ''
 concurrency:
@@ -38,6 +41,7 @@ jobs:
         run: |
           mkdir -p "docs/core/$CORE_VERSION"
           cp -R _sources/core/docs/site/. "docs/core/$CORE_VERSION/"
+          rm -f "docs/core/$CORE_VERSION/llms.txt" "docs/core/$CORE_VERSION/robots.txt"
       - name: Check out approved Spring release
         if: env.SPRING_SHA != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
