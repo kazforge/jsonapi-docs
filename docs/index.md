@@ -1,6 +1,30 @@
+---
+title: Overview
+hide:
+  - navigation
+  - toc
+---
+
 # JSON:API for Java
 
-Choose your documentation:
+Choose the documentation for your project.
 
-- [Core library](core/index.md) — framework-neutral JSON:API libraries.
-- [Spring integration](spring/index.md) — independently released Spring integration.
+<div class="grid cards" markdown>
+
+-   **Core library**
+
+    ---
+
+    Framework-neutral JSON:API 1.1 for Java 21+: mapping, validation, PATCH and queries.
+
+    **Latest:** [{core}](core/{core}/index.md) · [Browse versions](core/index.md) · [GitHub](https://github.com/kazforge/jsonapi-java)
+
+-   **Spring integration**
+
+    ---
+
+    Spring Framework 7 WebMVC integration for JSON:API endpoints.
+
+    **Latest:** [{spring}](spring/{spring}/index.md) · [Browse versions](spring/index.md) · [GitHub](https://github.com/kazforge/jsonapi-java-spring)
+
+</div>

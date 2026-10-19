@@ -1,0 +1,67 @@
+{% import "partials/nav-item.html" as item with context %}
+{% set class = "md-nav md-nav--primary" %}
+{% if "navigation.tabs" in features %}
+  {% set class = class ~ " md-nav--lifted" %}
+{% endif %}
+{% if "toc.integrate" in features %}
+  {% set class = class ~ " md-nav--integrated" %}
+{% endif %}
+<nav class="{{ class }}" aria-label="{{ lang.t('nav') }}" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" title="{{ config.site_name | e }}" class="md-nav__button md-logo" aria-label="{{ config.site_name }}" data-md-component="logo">
+      {% include "partials/logo.html" %}
+    </a>
+    {{ config.site_name }}
+  </label>
+  {% if config.repo_url %}
+    <div class="md-nav__source">
+      {% include "partials/source.html" %}
+    </div>
+  {% endif %}
+  <ul class="md-nav__list" data-md-scrollfix>
+    {% for nav_item in nav.items %}
+      {% set path = "__nav_" ~ loop.index %}
+      {% if nav_item.children %}
+        {% set versions = nav_item.children | selectattr("children") | list %}
+        {% set ns = namespace(version = versions | first) %}
+        {% for v in versions %}
+          {% if v.active %}
+            {% set ns.version = v %}
+          {% endif %}
+        {% endfor %}
+        {% set active_version = ns.version %}
+        <li class="md-nav__item {% if nav_item.active %}md-nav__item--active md-nav__item--section{% endif %} md-nav__item--nested">
+          <input class="md-nav__toggle md-toggle" type="checkbox" id="{{ path }}" {% if nav_item.active %}checked{% endif %}>
+          <label class="md-nav__link md-nav__mobile-trigger" for="{{ path }}" id="{{ path }}_label" tabindex="0">
+            <span class="md-ellipsis">{{ nav_item.title }}</span>
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+          <nav class="md-nav" data-md-level="1" aria-labelledby="{{ path }}_label" aria-expanded="{{ nav_item.active | tojson }}">
+            <label class="md-nav__title" for="{{ path }}">
+              <span class="md-nav__icon md-icon"></span>
+              {{ nav_item.title }}
+            </label>
+            <div class="md-nav__version-context">
+              <span class="md-nav__product-name">{{ nav_item.title }}</span>
+              <span class="md-nav__mobile-version-label">Version</span>
+              <span class="md-nav__product-sep" aria-hidden="true">·</span>
+              <label class="md-sr-only" for="{{ path }}_version">{{ nav_item.title }} version</label>
+              <select id="{{ path }}_version" class="md-nav__version-select" aria-label="{{ nav_item.title }} version" onchange="if (this.value) location.href = this.value">
+                {% for v in versions %}
+                  <option value="{{ (v.children | first).url | url }}" {% if v == active_version %}selected{% endif %}>v{{ v.title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <ul class="md-nav__list md-nav__topic-list" data-md-scrollfix>
+              {% for topic in active_version.children %}
+                {{ item.render(topic, path ~ "_" ~ loop.index, 2, active_version) }}
+              {% endfor %}
+            </ul>
+          </nav>
+        </li>
+      {% else %}
+        {{ item.render(nav_item, path, 1) }}
+      {% endif %}
+    {% endfor %}
+  </ul>
+</nav>

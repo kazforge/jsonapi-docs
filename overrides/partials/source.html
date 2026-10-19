@@ -1,0 +1,14 @@
+{% set ns = namespace(repo = config.repo_name, url = config.repo_url) %}
+{% if page and config.extra.products %}
+  {% for key, meta in config.extra.products.items() %}
+    {% if page.url.startswith(key ~ "/") %}
+      {% set ns.repo = meta.repo %}
+      {% set ns.url = "https://github.com/" ~ meta.repo %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+<a href="{{ ns.url }}" title="Source repository on GitHub" class="md-source" rel="noopener">
+  {% set icon = config.theme.icon.repo or "fontawesome/brands/github" %}
+  {% include ".icons/" ~ icon ~ ".svg" %}
+  <span>{{ ns.repo }}</span>
+</a>

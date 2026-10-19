@@ -32,7 +32,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/assemble_docs.py
-      - run: mkdocs build --strict
+      - run: mkdocs build --strict -f build/mkdocs.yml
       - name: Upload PR preview
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
