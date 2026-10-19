@@ -5,18 +5,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  repository_dispatch:
+    types: [docs-release-published]
 permissions:
   contents: read
-# Pin approved documentation snapshots only after release and consumer verification.
-# One-time Core 0.4.0 exception: software tag v0.4.0 =
-# 3ab34c99a8c29deb4f384c943bf7bc60b77d32f5; corrected docs snapshot =
-# 6a5fb0906fe38de0466c4b819fb9dad7d37faa47 (Core PR #317).
-# Later promotions must pin the software-tag commit directly, never moving main.
-env:
-  CORE_VERSION: '0.4.0'
-  CORE_SHA: '6a5fb0906fe38de0466c4b819fb9dad7d37faa47'
-  SPRING_VERSION: '0.1.0'
-  SPRING_SHA: '6935b7d62a5911937bd45a98f985274cfc13640b'
 concurrency:
   group: docs-${{ github.ref }}
   cancel-in-progress: false
@@ -28,39 +20,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Check out approved Core release
-        if: env.CORE_SHA != ''
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: kazforge/jsonapi-java
-          ref: ${{ env.CORE_SHA }}
-          path: _sources/core
-          persist-credentials: false
-      - name: Copy Core documentation
-        if: env.CORE_SHA != ''
-        run: |
-          mkdir -p "docs/core/$CORE_VERSION"
-          cp -R _sources/core/docs/site/. "docs/core/$CORE_VERSION/"
-          rm -f "docs/core/$CORE_VERSION/llms.txt" "docs/core/$CORE_VERSION/robots.txt"
-      - name: Check out approved Spring release
-        if: env.SPRING_SHA != ''
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: kazforge/jsonapi-java-spring
-          ref: ${{ env.SPRING_SHA }}
-          path: _sources/spring
-          persist-credentials: false
-      - name: Copy Spring documentation
-        if: env.SPRING_SHA != ''
-        run: |
-          mkdir -p "docs/spring/$SPRING_VERSION"
-          cp -R _sources/spring/docs/site/. "docs/spring/$SPRING_VERSION/"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
       - name: Install MkDocs
         run: |
           python -m pip install --only-binary :all: --require-hashes -r requirements.txt
+      - name: Validate assembler syntax
+        run: python -m py_compile scripts/assemble_docs.py
+      - name: Assemble published guides
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/assemble_docs.py
       - run: mkdocs build --strict
       - name: Upload PR preview
         if: github.event_name == 'pull_request'
