@@ -1,3 +1,5 @@
 # Spring integration
 
-Published versions are assembled automatically from immutable Spring release documentation assets.
+Published documentation snapshots for [kazforge/jsonapi-java-spring](https://github.com/kazforge/jsonapi-java-spring).
+
+## Documentation versions

@@ -1,3 +1,5 @@
 # Core library
 
-Published versions are assembled automatically from immutable Core release documentation assets.
+Published documentation snapshots for [kazforge/jsonapi-java](https://github.com/kazforge/jsonapi-java).
+
+## Documentation versions

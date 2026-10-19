@@ -2,13 +2,19 @@
 
 import json
 import re
+import shutil
 import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
 
-DOCS = Path(__file__).resolve().parent.parent / "docs"
-PRODUCTS = {"core": "kazforge/jsonapi-java", "spring": "kazforge/jsonapi-java-spring"}
+import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+DOCS = ROOT / "docs"
+BUILD = ROOT / "build"
+BUILD_DOCS = BUILD / "docs"
+MKDOCS = ROOT / "mkdocs.yml"
 LABEL = re.compile(r"docs-source-sha=([a-f0-9]{40});software-tag-sha=([a-f0-9]{40})")
 VERSION = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
 
@@ -44,32 +50,61 @@ def releases(repo):
     return [tag for _, tag in sorted(found, reverse=True)]
 
 
+def prefix_nav(items, prefix, target):
+    if isinstance(items, str):
+        resolved = (target / items).resolve()
+        if not resolved.is_relative_to(target.resolve()) or not resolved.is_file():
+            raise ValueError(f"Invalid nav target: {prefix}/{items}")
+        return f"{prefix}/{items}"
+    if isinstance(items, list):
+        return [prefix_nav(i, prefix, target) for i in items]
+    if isinstance(items, dict):
+        return {k: prefix_nav(v, prefix, target) for k, v in items.items()}
+    raise ValueError(f"Invalid nav entry: {items}")
+
+
+def load_topics(product, version, target):
+    manifest = target / "nav.yml"
+    if not manifest.is_file() and (product, version) == ("core", "0.4.0"):
+        manifest = DOCS / "core" / "nav.yml"
+    if manifest.is_file():
+        raw = yaml.safe_load(manifest.read_text())
+        (target / "nav.yml").unlink(missing_ok=True)
+    elif (product, version) == ("spring", "0.1.0"):
+        # This immutable snapshot predates nav.yml; retain MkDocs' file ordering.
+        raw = ["index.md"] + sorted(p.name for p in target.glob("*.md") if p.name != "index.md")
+    else:
+        raise ValueError(f"Missing product-owned nav.yml: {product} {version}")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError(f"Expected a nonempty navigation list: {product} {version}")
+    first = raw[0]
+    if isinstance(first, dict) and len(first) == 1:
+        first = next(iter(first.values()))
+    if first != "index.md":
+        raise ValueError(f"Navigation must start with index.md: {product} {version}")
+    return prefix_nav(raw, f"{product}/{version}", target)
+
+
 def main():
-    home = ["---", "title: Overview", "---", "", "# JSON:API for Java", "",
-            "Choose the documentation for your project.", "",
-            '<div class="grid cards" markdown>', ""]
-    llms = ["# JSON:API for Java", "", "> Published Core and Spring guides.", ""]
-    for product, repo in PRODUCTS.items():
-        label = "Core library" if product == "core" else "Spring integration"
+    config = yaml.safe_load(MKDOCS.read_text())
+    products = config["extra"]["products"]
+    shutil.rmtree(BUILD_DOCS, ignore_errors=True)
+    shutil.copytree(DOCS, BUILD_DOCS)
+    (BUILD_DOCS / "core" / "nav.yml").unlink(missing_ok=True)
+    nav = [{"Overview": "index.md"}]
+    latest = {}
+    llms = [f"# {config['site_name']}", "", f"> {config['site_description']}", ""]
+    for product, meta in products.items():
+        repo = meta["repo"]
         versions = releases(repo)
         if not versions:
             raise ValueError(f"No published docs assets: {repo}")
-        summary = ("Framework-neutral JSON:API 1.1 for Java 21+: mapping, validation, "
-                   "PATCH and queries." if product == "core" else
-                   "Spring Framework 7 WebMVC integration for JSON:API endpoints.")
-        latest = versions[0][1:]
-        home.extend([f"-   **{label}**", "", f"    {summary}", "",
-                     f"    **Latest:** [{latest}]({product}/{latest}/index.md)", "",
-                     f"    [Browse versions]({product}/index.md)", ""])
-        landing = [f"# {label}", "", f"[Source on GitHub](https://github.com/{repo})", "",
-                   "## Documentation versions", "",
-                   '<div class="version-picker">',
-                   f'<label for="{product}-version">Version</label>',
-                   f'<select id="{product}-version" onchange="if (this.value) location.href = this.value">',
-                   '  <option value="" selected disabled>Choose a version</option>']
+        latest[product] = versions[0][1:]
+        version_nav = []
+        version_links = []
         for tag in versions:
             version = tag[1:]
-            target = DOCS / product / version
+            target = BUILD_DOCS / product / version
             target.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory() as tmp:
                 subprocess.run(["gh", "release", "download", tag, "-R", repo,
@@ -80,13 +115,26 @@ def main():
                 raise ValueError(f"Missing index.md: {repo} {tag}")
             for name in ("robots.txt", "llms.txt"):
                 (target / name).unlink(missing_ok=True)
-            landing.append(f'  <option value="{version}/">{version}</option>')
-            llms.append(f"- [{label} {version}]({product}/{version}/)")
-        landing.extend(["</select>", "</div>"])
-        (DOCS / product / "index.md").write_text("\n".join(landing) + "\n")
-    home.append("</div>")
-    (DOCS / "index.md").write_text("\n".join(home) + "\n")
-    (DOCS / "llms.txt").write_text("\n".join(llms) + "\n")
+            version_nav.append({version: load_topics(product, version, target)})
+            version_links.append(f"- [{version}]({version}/index.md)")
+            llms.append(f"- [{meta['title']} {version}]({product}/{version}/)")
+        version_nav.append({"Releases": f"{product}/index.md"})
+        nav.append({meta["title"]: version_nav})
+        index_md = BUILD_DOCS / product / "index.md"
+        index_md.write_text(index_md.read_text().rstrip() + "\n\n" + "\n".join(version_links) + "\n")
+    home_md = BUILD_DOCS / "index.md"
+    home = home_md.read_text()
+    for product, version in latest.items():
+        home = home.replace("{" + product + "}", version)
+    home_md.write_text(home)
+    (BUILD_DOCS / "llms.txt").write_text("\n".join(llms) + "\n")
+    (BUILD / "mkdocs.yml").write_text(yaml.safe_dump({
+        "INHERIT": "../mkdocs.yml",
+        "docs_dir": "docs",
+        "site_dir": "../site",
+        "theme": {"custom_dir": "../overrides"},
+        "nav": nav,
+    }, sort_keys=False))
 
 
 if __name__ == "__main__":
