@@ -1,6 +1,6 @@
 site_name: JSON:API for Java
 site_description: Versioned documentation for the Core library and Spring integration.
-site_url: https://kazforge.github.io/jsonapi-docs/
+site_url: https://jsonapi.kazforge.com/
 repo_name: kazforge/jsonapi-docs
 repo_url: https://github.com/kazforge/jsonapi-docs
 edit_uri: ''
