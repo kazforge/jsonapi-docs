@@ -45,14 +45,22 @@ def releases(repo):
 
 
 def main():
-    home = ["---", "title: Overview", "---", "", "# JSON:API for Java", "", "Published documentation:", ""]
+    home = ["---", "title: Overview", "---", "", "# JSON:API for Java", "",
+            "Choose the documentation for your project.", "",
+            '<div class="grid cards" markdown>', ""]
     llms = ["# JSON:API for Java", "", "> Published Core and Spring guides.", ""]
     for product, repo in PRODUCTS.items():
         label = "Core library" if product == "core" else "Spring integration"
         versions = releases(repo)
         if not versions:
             raise ValueError(f"No published docs assets: {repo}")
-        home.append(f"- [{label}]({product}/index.md)")
+        summary = ("Framework-neutral JSON:API 1.1 for Java 21+: mapping, validation, "
+                   "PATCH and queries." if product == "core" else
+                   "Spring Framework 7 WebMVC integration for JSON:API endpoints.")
+        latest = versions[0][1:]
+        home.extend([f"-   **{label}**", "", f"    {summary}", "",
+                     f"    **Latest:** [{latest}]({product}/{latest}/index.md)", "",
+                     f"    [Browse versions]({product}/index.md)", ""])
         landing = [f"# {label}", "", f"[Source on GitHub](https://github.com/{repo})", "",
                    "## Documentation versions", "",
                    '<div class="version-picker">',
@@ -76,6 +84,7 @@ def main():
             llms.append(f"- [{label} {version}]({product}/{version}/)")
         landing.extend(["</select>", "</div>"])
         (DOCS / product / "index.md").write_text("\n".join(landing) + "\n")
+    home.append("</div>")
     (DOCS / "index.md").write_text("\n".join(home) + "\n")
     (DOCS / "llms.txt").write_text("\n".join(llms) + "\n")
 
