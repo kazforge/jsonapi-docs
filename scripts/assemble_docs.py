@@ -45,7 +45,7 @@ def releases(repo):
 
 
 def main():
-    home = ["# JSON:API for Java", "", "Published documentation:", ""]
+    home = ["---", "title: Overview", "---", "", "# JSON:API for Java", "", "Published documentation:", ""]
     llms = ["# JSON:API for Java", "", "> Published Core and Spring guides.", ""]
     for product, repo in PRODUCTS.items():
         label = "Core library" if product == "core" else "Spring integration"
@@ -53,7 +53,12 @@ def main():
         if not versions:
             raise ValueError(f"No published docs assets: {repo}")
         home.append(f"- [{label}]({product}/index.md)")
-        landing = [f"# {label}", "", "Published versions:", ""]
+        landing = [f"# {label}", "", f"[Source on GitHub](https://github.com/{repo})", "",
+                   "## Documentation versions", "",
+                   '<div class="version-picker">',
+                   f'<label for="{product}-version">Version</label>',
+                   f'<select id="{product}-version" onchange="if (this.value) location.href = this.value">',
+                   '  <option value="" selected disabled>Choose a version</option>']
         for tag in versions:
             version = tag[1:]
             target = DOCS / product / version
@@ -67,8 +72,9 @@ def main():
                 raise ValueError(f"Missing index.md: {repo} {tag}")
             for name in ("robots.txt", "llms.txt"):
                 (target / name).unlink(missing_ok=True)
-            landing.append(f"- [{version}]({version}/index.md)")
+            landing.append(f'  <option value="{version}/">{version}</option>')
             llms.append(f"- [{label} {version}]({product}/{version}/)")
+        landing.extend(["</select>", "</div>"])
         (DOCS / product / "index.md").write_text("\n".join(landing) + "\n")
     (DOCS / "index.md").write_text("\n".join(home) + "\n")
     (DOCS / "llms.txt").write_text("\n".join(llms) + "\n")
