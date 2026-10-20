@@ -100,8 +100,8 @@ def releases(repo):
             continue
         tag = release["tag_name"]
         version = VERSION.fullmatch(tag)
-        assets = api_items(f"repos/{repo}/releases/{release['id']}/assets?per_page=100")
-        asset = select_asset(repo, tag, assets, main_sha)
+        # Release responses include the assets; only the release list is paginated.
+        asset = select_asset(repo, tag, release["assets"], main_sha)
         if asset is None:
             continue
         if not version or any(tag == existing[1] for existing in found):

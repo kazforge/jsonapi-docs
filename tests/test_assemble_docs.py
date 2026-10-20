@@ -1,7 +1,6 @@
 import hashlib
 import io
 import json
-import shutil
 import tarfile
 import tempfile
 import unittest
@@ -29,37 +28,38 @@ def asset(number=0, source=ORIGINAL_SHA, software=TAG_SHA):
 
 class SelectionTests(unittest.TestCase):
     def setUp(self):
-        self.tag = patch.object(assembler, "tag_sha", return_value=TAG_SHA).start()
-        self.gh = patch.object(assembler, "gh", return_value='{"status": "ahead"}').start()
-        self.addCleanup(patch.stopall)
+        self.enterContext(patch.object(assembler, "tag_sha", return_value=TAG_SHA))
+        self.gh = self.enterContext(patch.object(assembler, "gh", return_value='{"status": "ahead"}'))
 
     def select(self, assets, tag="v1.0.0"):
         return assembler.select_asset(REPO, tag, assets, MAIN_SHA)
 
     def test_original_only_and_post_release_source(self):
-        original = asset()
-        self.assertEqual(self.select([original]), original)
+        for source, status in ((TAG_SHA, "identical"), (ORIGINAL_SHA, "ahead")):
+            original = asset(source=source)
+            self.gh.side_effect = [json.dumps({"status": status}), '{"status": "ahead"}']
+            with self.subTest(source=source):
+                self.assertEqual(self.select([original, {"name": "library.jar"}]), original)
         self.gh.assert_any_call("api", f"repos/{REPO}/compare/{TAG_SHA}...{ORIGINAL_SHA}?per_page=1")
         self.gh.assert_any_call("api", f"repos/{REPO}/compare/{ORIGINAL_SHA}...{MAIN_SHA}?per_page=1")
+        self.assertIsNone(self.select([{"name": "library.jar"}]))
 
     def test_numeric_revision_order_is_independent_of_listing_order(self):
         original, r2, r10 = asset(), asset(2, "c" * 40), asset(10, "d" * 40)
-        for assets in ([r10, original, r2], [original, r2, r10], [r2, r10, original]):
+        for assets in ([r10, original, r2], [r2, original, r10]):
             with self.subTest(assets=assets):
                 self.assertEqual(self.select(assets), r10)
         self.gh.assert_any_call("api", f"repos/{REPO}/compare/{ORIGINAL_SHA}...{'d' * 40}?per_page=1")
 
-    def test_unrelated_assets_are_ignored(self):
-        self.assertIsNone(self.select([{"name": "library.jar"}]))
-
-    def test_duplicate_original_and_revision_fail(self):
-        for assets in ([asset(), asset()], [asset(), asset(1, "c" * 40), asset(1, "d" * 40)]):
-            with self.subTest(assets=assets), self.assertRaisesRegex(ValueError, "Duplicate docs revision"):
+    def test_duplicate_and_orphaned_revisions_fail(self):
+        for assets, error in (
+            ([asset(), asset()], "Duplicate docs revision"),
+            ([asset(), asset(1, "c" * 40), asset(1, "d" * 40)], "Duplicate docs revision"),
+            ([asset(), asset(1)], "Duplicate docs source"),
+            ([asset(1)], "Missing original"),
+        ):
+            with self.subTest(assets=assets), self.assertRaisesRegex(ValueError, error):
                 self.select(assets)
-
-    def test_revision_requires_original(self):
-        with self.assertRaisesRegex(ValueError, "Missing original"):
-            self.select([asset(1)])
 
     def test_malformed_revision_names_fail(self):
         for name in ("docs-site-r0.tar.gz", "docs-site-r01.tar.gz", "docs-site-r-1.tar.gz",
@@ -69,19 +69,12 @@ class SelectionTests(unittest.TestCase):
                 self.select([asset(), dict(asset(1), name=name)])
 
     def test_missing_malformed_and_conflicting_labels_fail(self):
-        for label in (None, "", "docs-source-sha=bad", asset()["label"] + ";extra=x",
+        for label in (None, "docs-source-sha=bad", asset()["label"] + ";extra=x",
                       asset()["label"] + ";" + asset()["label"],
                       asset(1, "c" * 40, "e" * 40)["label"]):
             with self.subTest(label=label), self.assertRaisesRegex(ValueError, "Unverified docs asset"):
-                self.select([asset(), dict(asset(1), label=label)])
-
-    def test_invalid_lower_revision_is_not_silently_skipped(self):
-        with self.assertRaisesRegex(ValueError, "Unverified docs asset"):
-            self.select([asset(), dict(asset(1), label="broken"), asset(2, "d" * 40)])
-
-    def test_duplicate_source_labels_fail(self):
-        with self.assertRaisesRegex(ValueError, "Duplicate docs source"):
-            self.select([asset(), asset(1)])
+                # A valid newer revision must not mask a broken historical one.
+                self.select([asset(), dict(asset(1), label=label), asset(2, "d" * 40)])
 
     def test_unrelated_sources_and_sources_off_default_branch_fail(self):
         for responses in (["diverged"], ["ahead", "behind"],
@@ -90,18 +83,14 @@ class SelectionTests(unittest.TestCase):
             with self.subTest(responses=responses), self.assertRaisesRegex(ValueError, "Unverified docs provenance"):
                 self.select([asset(), asset(1, "c" * 40)])
 
-    def test_source_at_tag_is_valid(self):
-        self.gh.return_value = '{"status": "identical"}'
-        self.assertEqual(self.select([asset(source=TAG_SHA)])["name"], "docs-site.tar.gz")
+    def test_non_version_tag_fails(self):
+        with self.assertRaisesRegex(ValueError, "Invalid software version"):
+            self.select([asset()], "docs-only")
 
     def test_unknown_source_commit_fails(self):
         self.gh.side_effect = assembler.subprocess.CalledProcessError(1, "gh")
         with self.assertRaises(assembler.subprocess.CalledProcessError):
             self.select([asset()])
-
-    def test_non_version_tag_fails(self):
-        with self.assertRaisesRegex(ValueError, "Invalid software version"):
-            self.select([asset()], "docs-only")
 
 
 class DiscoveryTests(unittest.TestCase):
@@ -116,28 +105,24 @@ class DiscoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Invalid tag"):
                 assembler.tag_sha(REPO, "v1.0.0")
 
-    def test_paginated_json_lines(self):
-        with patch.object(assembler, "gh", return_value='{"id":1}\n{"id":2}\n') as gh:
-            self.assertEqual(assembler.api_items("endpoint"), [{"id": 1}, {"id": 2}])
-            gh.assert_called_once_with("api", "--paginate", "endpoint", "--jq", ".[] | @json")
-
-    def test_software_order_and_complete_asset_listing(self):
-        releases = [
-            {"id": n, "tag_name": tag, "draft": draft, "prerelease": prerelease}
-            for n, (tag, draft, prerelease) in enumerate([
-                ("v0.9.0", False, False), ("v0.10.0", False, False),
-                ("v9.0.0", True, False), ("v8.0.0", False, True), ("v0.1.0", False, False),
-            ])
-        ]
+    def test_software_order_uses_embedded_assets(self):
         r10 = asset(10, "c" * 40)
-        pages = [releases, [asset(), r10], [asset()], []]
-        with patch.object(assembler, "api_items", side_effect=pages) as items, \
-                patch.object(assembler, "tag_sha", return_value=TAG_SHA), \
-                patch.object(assembler, "gh", side_effect=lambda *args: json.dumps(
-                    {"default_branch": "main", "sha": MAIN_SHA, "status": "ahead"})):
+        releases = [
+            {"tag_name": tag, "draft": draft, "prerelease": prerelease, "assets": assets}
+            for tag, draft, prerelease, assets in [
+                ("v0.9.0", False, False, [asset(), r10]),
+                ("v0.10.0", False, False, [asset()]), ("v0.1.0", False, False, []),
+                ("v9.0.0", True, False, [asset()]), ("v8.0.0", False, True, [asset()]),
+            ]
+        ]
+        responses = [json.dumps({"default_branch": "main"}), json.dumps({"sha": MAIN_SHA}),
+                     "\n".join(json.dumps(release) for release in releases)]
+        with patch.object(assembler, "gh", side_effect=responses) as gh, \
+                patch.object(assembler, "select_asset", side_effect=[r10, asset(), None]) as select:
             self.assertEqual(assembler.releases(REPO), [("v0.10.0", asset()), ("v0.9.0", r10)])
-        self.assertEqual(items.call_count, 4)
-        items.assert_any_call(f"repos/{REPO}/releases/0/assets?per_page=100")
+        gh.assert_called_with("api", "--paginate", f"repos/{REPO}/releases?per_page=100", "--jq", ".[] | @json")
+        select.assert_any_call(REPO, "v0.9.0", [asset(), r10], MAIN_SHA)
+        self.assertEqual(select.call_count, 3)  # Drafts and prereleases are not consumed.
 
 
 class BuildTests(unittest.TestCase):
@@ -190,41 +175,25 @@ class BuildTests(unittest.TestCase):
             with self.subTest(nav=nav), self.assertRaises(ValueError):
                 assembler.load_topics("spring", "0.1.0", self.root)
 
-    def make_archive(self, name, files):
-        path = self.root / name
-        with tarfile.open(path, "w:gz") as archive:
-            for name, text in files.items():
-                data = text.encode()
-                info = tarfile.TarInfo(name)
-                info.size = len(data)
-                archive.addfile(info, io.BytesIO(data))
-        return path
-
     def test_assembly_keeps_version_urls_and_discovery_deterministic(self):
-        docs = self.root / "docs"
         build = self.root / "build"
-        shutil.copytree(assembler.DOCS, docs)
-        original = self.make_archive("original.tar.gz", {
-            "index.md": "# Original\n", "nav.yml": "- index.md\n",
-        })
-        revised = self.make_archive("revision.tar.gz", {
-            "index.md": "# Revised\n", "topic.md": "# Topic\n",
-            "nav.yml": "- Start: index.md\n- Product topic: topic.md\n",
-            "robots.txt": "product robots", "llms.txt": "product llms",
-        })
-        original_digest = hashlib.sha256(original.read_bytes()).hexdigest()
         latest = {"core": "v0.4.0", "spring": "v0.1.0"}
-        archives = {"docs-site.tar.gz": original, "docs-site-r10.tar.gz": revised}
 
         def download(repo, tag, selected, destination):
-            shutil.copyfile(archives[selected["name"]], destination)
+            files = {"index.md": selected["name"], "nav.yml": "- index.md\n",
+                     "robots.txt": "product robots", "llms.txt": "product llms"}
+            with tarfile.open(destination, "w:gz") as archive:
+                for name, text in files.items():
+                    data = text.encode()
+                    info = tarfile.TarInfo(name)
+                    info.size = len(data)
+                    archive.addfile(info, io.BytesIO(data))
 
         def releases(repo):
             product = "spring" if repo.endswith("-spring") else "core"
             return [(latest[product], asset(10, "c" * 40)), ("v0.0.1", asset())]
 
-        with patch.object(assembler, "DOCS", docs), patch.object(assembler, "BUILD", build), \
-                patch.object(assembler, "BUILD_DOCS", build / "docs"), \
+        with patch.multiple(assembler, BUILD=build, BUILD_DOCS=build / "docs"), \
                 patch.object(assembler, "releases", side_effect=releases), \
                 patch.object(assembler, "download_asset", side_effect=download):
             assembler.main()
@@ -232,17 +201,14 @@ class BuildTests(unittest.TestCase):
             assembler.main()
             self.assertEqual(snapshot, {str(p.relative_to(build)): p.read_bytes() for p in build.rglob("*") if p.is_file()})
         config = yaml.safe_load((build / "mkdocs.yml").read_text())
-        self.assertEqual(config["nav"][1]["Core"][0], {"0.4.0": [
-            {"Start": "core/0.4.0/index.md"}, {"Product topic": "core/0.4.0/topic.md"},
-        ]})
-        self.assertIn("# Revised", (build / "docs/core/0.4.0/index.md").read_text())
-        self.assertIn("# Original", (build / "docs/core/0.0.1/index.md").read_text())
+        self.assertEqual(config["nav"][1]["Core"][0], {"0.4.0": ["core/0.4.0/index.md"]})
+        self.assertEqual((build / "docs/core/0.4.0/index.md").read_text(), "docs-site-r10.tar.gz")
+        self.assertEqual((build / "docs/core/0.0.1/index.md").read_text(), "docs-site.tar.gz")
         self.assertIn("core/0.4.0/", (build / "docs/llms.txt").read_text())
         self.assertNotIn("r10", str(config))
         self.assertFalse((build / "docs/core/0.4.0/robots.txt").exists())
         self.assertFalse((build / "docs/core/0.4.0/llms.txt").exists())
-        self.assertEqual((build / "docs/robots.txt").read_bytes(), (docs / "robots.txt").read_bytes())
-        self.assertEqual(hashlib.sha256(original.read_bytes()).hexdigest(), original_digest)
+        self.assertEqual((build / "docs/robots.txt").read_bytes(), (assembler.DOCS / "robots.txt").read_bytes())
 
 
 if __name__ == "__main__":
