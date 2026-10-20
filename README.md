@@ -5,7 +5,7 @@ Shared MkDocs/Pages portal for the independently released
 [Spring](https://github.com/kazforge/jsonapi-java-spring) libraries.
 
 Each product owns its `docs/site/` guides. This repository only hosts the
-portal, assembling immutable `docs-site.tar.gz` assets from product GitHub
+portal, assembling immutable documentation assets from product GitHub
 Releases into versioned pages, navigation and discovery files automatically.
 
 ## Local build
@@ -26,7 +26,37 @@ for Pages and PR previews. Homepage prose stays in `docs/index.md`;
 only `{core}` and `{spring}` version placeholders are replaced
 in the build copy. Assemble before running MkDocs.
 
+Run the assembler tests with `python -m unittest discover -s tests -v`.
+
+## Immutable documentation revisions
+
+Each existing software Release keeps its original `docs-site.tar.gz` (revision
+0). Products can append `docs-site-r1.tar.gz`, `docs-site-r2.tar.gz`, etc. to
+that same Release without releasing software or opening a Portal PR. The
+assembler selects the highest **numeric** revision, or the original when no
+revisions exist. Software version ordering, URLs and version pickers do not
+include revision numbers. The existing `docs-release-published` repository
+dispatch runs the same strict MkDocs build and Pages deployment.
+
+Every docs asset must have exactly the label
+`docs-source-sha=<40 lowercase hex characters>;software-tag-sha=<40 lowercase hex characters>`.
+The software SHA must match the resolved release tag commit. The docs source
+must descend from that commit and be reachable from the product's default
+branch; revisions must also descend from the original docs source. This allows
+the existing post-release Core 0.4.0 original. Product review and publishing
+own the docs-only change check and released-API compatibility; ancestry alone
+does not establish semantic compatibility.
+
+Missing originals, duplicate revisions or source SHAs, malformed `docs-site*`
+names, bad labels and unverified provenance fail the build, even on an older
+revision. Invalid revisions never silently fall back to another asset. Assets
+are downloaded by verified ID and checked against GitHub's SHA-256 digest when
+provided. All originals and revisions remain untouched on GitHub. Rebuilding
+the same release metadata selects the same snapshot; rollback is a reviewed
+docs revert published as the next revision, not replacement of an old asset.
+
 Future product archives must include a `nav.yml` list with `index.md` first
 (optionally labelled), followed by product-owned topic labels and paths.
-Core 0.4.0 alone uses `docs/core/nav.yml`; Spring 0.1.0 retains its original
-file-based navigation. No product Markdown or discovery files are parsed for navigation.
+Only the Core 0.4.0 original uses `docs/core/nav.yml`; only the Spring 0.1.0
+original retains file-based navigation. Revisions use their product-owned
+manifest. No product Markdown or discovery files are parsed for navigation.
